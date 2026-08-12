@@ -1,0 +1,10 @@
+{
+  "name": "teste-pluvia-dashboard",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter frontend dev\" \"pnpm --filter backend dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4"
+  }
+}
