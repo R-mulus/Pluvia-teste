@@ -1,0 +1,66 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "API",
+            "type": "shell",
+            "command": "node server.js",
+            "options": {
+                "cwd": "${workspaceFolder}/pluvia-api"
+            },
+            "icon": {
+                "id": "server",
+                "color": "terminal.ansiRed"
+            },
+            "presentation": {
+                "panel": "new",
+                "reveal": "always"
+            },
+            "isBackground": true
+        },
+        {
+            "label": "Dashboard",
+            "type": "shell",
+            "command": "npm run dev",
+            "options": {
+                "cwd": "${workspaceFolder}/pluvia-dashboard"
+            },
+            "icon": {
+                "id": "device-desktop",
+                "color": "terminal.ansiYellow"
+            },
+            "presentation": {
+                "panel": "new",
+                "reveal": "always"
+            },
+            "isBackground": true
+        },
+        {
+            "label": "Simulador ESP32",
+            "type": "shell",
+            "command": "node esp32.js",
+            "options": {
+                "cwd": "${workspaceFolder}/pluvia-esp32-simulador"
+            },
+            "icon": {
+                "id": "chip",
+                "color": "terminal.ansiGreen"
+            },
+            "presentation": {
+                "panel": "new",
+                "reveal": "always"
+            },
+            "isBackground": true
+        },
+        {
+            "label": "Iniciar servidores Pluvia",
+            "dependsOn": [
+                "API",
+                "Dashboard",
+                "Simulador ESP32"
+            ],
+            "dependsOrder": "parallel",
+            "problemMatcher": []
+        }
+    ]
+}
