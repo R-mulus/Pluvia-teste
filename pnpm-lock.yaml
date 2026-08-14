@@ -26,6 +26,9 @@ importers:
 
   pluvia-dashboard:
     dependencies:
+      mqtt:
+        specifier: ^5.15.2
+        version: 5.15.2(supports-color@10.2.2)
       react:
         specifier: ^19.2.8
         version: 19.2.8

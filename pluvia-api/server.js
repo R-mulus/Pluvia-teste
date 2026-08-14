@@ -4,7 +4,6 @@ const mqtt = require('mqtt');
 
 const app = express();
 
-// 1. Configuração de CORS permitindo especificamente a porta do react e mesmo assim não funcionou kkkkkkk
 app.use(cors({
   origin: 'http://localhost:5173',
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -44,28 +43,40 @@ let clientesConectados = [];
 mqttClient.on('message', (topic, message) => {
   if (topic === 'pluvia/telemetria/pivo-teste') {
     const dadosTelemetria = message.toString();
-    console.log(`📥 Telemetria recebida: ${dadosTelemetria}`);
     clientesConectados.forEach(cliente => cliente.write(`data: ${dadosTelemetria}\n\n`));
   }
 });
 
 app.post('/api/comando', (req, res) => {
-  const { deviceId, command, targetPosition } = req.body;
-  const payloadMqtt = JSON.stringify({
+  const { deviceId, command, targetPosition, startPosition, direction, irrigar, lamina } = req.body;
+  
+  // Monta o payload dinamicamente ignorando o que for undefined
+  const comandoMqtt = { action: command };
+  if (targetPosition !== undefined) comandoMqtt.targetPosition = targetPosition;
+  if (startPosition !== undefined) comandoMqtt.startPosition = startPosition;
+  if (direction !== undefined) comandoMqtt.direction = direction;
+  if (irrigar !== undefined) comandoMqtt.irrigar = irrigar;
+  if (lamina !== undefined) comandoMqtt.lamina = lamina;
+
+  const payloadObjeto = {
     messageId: Math.random().toString(16).slice(2, 8),
     deviceId: deviceId,
     type: 'command',
     timestamp: new Date().toISOString(),
-    command: { action: command, targetPosition: targetPosition }
-  });
+    command: comandoMqtt
+  };
 
+  const payloadMqtt = JSON.stringify(payloadObjeto);
   mqttClient.publish(`pluvia/comando/${deviceId}`, payloadMqtt);
-  res.status(200).json({ sucesso: true, mensagem: 'Comando enviado ao pivô' });
+  
+  res.status(200).json({ 
+    sucesso: true, 
+    mensagem: `Comando ${command.toUpperCase()} enviado ao pivô`,
+    payload: payloadObjeto 
+  });
 });
 
-// NOVA ROTA SSE COM CORS CORRIGIDO
 app.get('/api/telemetria', (req, res) => {
-  // O writeHead força os cabeçalhos a irem imediatamente para o navegador
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -73,11 +84,8 @@ app.get('/api/telemetria', (req, res) => {
     'Access-Control-Allow-Origin': 'http://localhost:5173'
   });
   
-  // O TRUQUE: Manda um dado vazio imediatamente para o navegador saber que a conexão foi aceita
   res.write('data: {"status": "CONECTADO", "position": 0}\n\n');
-  
   clientesConectados.push(res);
-
   req.on('close', () => {
     clientesConectados = clientesConectados.filter(c => c !== res);
   });

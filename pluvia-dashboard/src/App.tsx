@@ -1,13 +1,14 @@
-import './App.css'
 import { useState } from 'react'
-import { MqttLogger } from './components/MqttLogger'
-import { PivoController } from './components/PivoController'
-
+import './App.css'
+import { PivoController } from './Components/PivoController'
+import { MQTTCard, type PayloadMQTT } from './Components/MQTTCard'
+import { MqttLogger } from './Components/MqttLogger'
 
 function App() {
   const [isLoggerFullScreen, setIsLoggerFullScreen] = useState(false)
+  const [ultimoPayload, setUltimoPayload] = useState<PayloadMQTT | null>(null)
 
-  // Se o modo tela cheia estiver ativo, renderizamos apenas o Logger
+  // Modo tela cheia para o Logger
   if (isLoggerFullScreen) {
     return (
       <main className="full-screen-view">
@@ -40,20 +41,16 @@ function App() {
 
       {/* GRID ONDE OS COMPONENTES VÃO ENTRAR */}
       <section className="dashboard-grid">
+        <PivoController onCommandSent={setUltimoPayload} />
         
-        <PivoController />
+        {/* Card do Payload JSON que você pediu */}
+        <MQTTCard lastPayload={ultimoPayload} />
 
-        {/* Passamos uma função para o Logger abrir a si mesmo em tela cheia */}
+        {/* Logger do seu colega com suporte a tela cheia */}
         <MqttLogger 
           onExpand={() => setIsLoggerFullScreen(true)} 
           isFull={false} 
         />
-
-        {/* EXEMPLO PARA O FUTURO:
-          <PainelMeteorologico />
-          <ListaDeAlertas /> 
-        */}
-
       </section>
     </main>
   )
