@@ -1,0 +1,273 @@
+/* ESTRUTURA DO COMPONENTE */
+.logger-card {
+  grid-column: 1 / -1; /* Ocupa toda a largura do grid */
+  overflow: hidden;
+}
+
+.logger-content-split {
+  display: flex;
+  gap: 32px;
+  height: 100%;
+}
+
+/* COLUNA DA ESQUERDA (SIDEBAR) */
+.logger-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 320px; /* Largura expandida para dar respiro aos controles */
+  flex-shrink: 0;
+  gap: 20px;
+}
+
+.card-header-logger h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.header-status-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.logger-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.input-group-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-group-custom label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.input-group-custom input {
+  padding: 11px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-group-custom input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* TÓPICOS INSCRITOS */
+.topics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.section-subtitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+}
+
+.no-topics {
+  font-size: 13px;
+  color: #9ca3af;
+  margin: 0;
+  font-style: italic;
+}
+
+.topics-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.topic-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.topic-remove-btn {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  line-height: 1;
+}
+
+.topic-remove-btn:hover {
+  color: #1d4ed8;
+}
+
+/* TELA DO TERMINAL (COLUNA DA DIREITA) */
+.terminal-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 420px; /* ALTURA FIXA: Impede que o terminal cresça infinitamente! */
+  background-color: #0f172a;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  overflow: hidden;
+}
+
+.terminal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #1e293b;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #334155;
+}
+
+.log-count {
+  color: #38bdf8;
+}
+
+.terminal-window {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto; /* A rolagem acontece APENAS AQUI DENTRO */
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+  font-size: 12px;
+  color: #e2e8f0;
+  line-height: 1.6;
+}
+
+/* Personalização da barra de rolagem do terminal */
+.terminal-window::-webkit-scrollbar {
+  width: 8px;
+}
+.terminal-window::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+.terminal-window::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+.terminal-empty {
+  color: #64748b;
+  font-style: italic;
+  padding-top: 20px;
+}
+
+.log-entry {
+  margin-bottom: 6px;
+  word-break: break-all;
+  display: flex;
+  gap: 10px;
+}
+
+.log-time {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.log-topic {
+  color: #38bdf8;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.log-payload {
+  color: #4ade80;
+}
+
+/* BOTÕES GERAIS */
+.btn-primary {
+  flex: 1;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  background: #2563eb;
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover { background: #1d4ed8; }
+
+.btn-secondary {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: white;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-secondary:hover { background: #f3f4f6; }
+
+.expand-btn {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* MODO TELA CHEIA */
+.logger-card.full-mode {
+  height: 100%;
+}
+
+.logger-card.full-mode .terminal-wrapper {
+  height: calc(100vh - 120px); /* Ocupa quase a tela inteira em modo focado */
+}
+
+/* RESPONSIVO PARA DISPOSITIVOS MÓVEIS */
+@media (max-width: 900px) {
+  .logger-content-split {
+    flex-direction: column;
+  }
+  .logger-sidebar {
+    width: 100%;
+  }
+  .terminal-wrapper {
+    height: 350px;
+  }
+}

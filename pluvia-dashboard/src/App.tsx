@@ -1,7 +1,27 @@
 import './App.css'
+import { useState } from 'react'
+import { MqttLogger } from './components/MqttLogger'
 import { PivoController } from './components/PivoController'
 
+
 function App() {
+  const [isLoggerFullScreen, setIsLoggerFullScreen] = useState(false)
+
+  // Se o modo tela cheia estiver ativo, renderizamos apenas o Logger
+  if (isLoggerFullScreen) {
+    return (
+      <main className="full-screen-view">
+        <button 
+          className="btn-back" 
+          onClick={() => setIsLoggerFullScreen(false)}
+        >
+          ← VOLTAR AO DASHBOARD
+        </button>
+        <MqttLogger isFull={true} />
+      </main>
+    )
+  }
+
   return (
     <main className="dashboard">
       {/* HEADER DO DASHBOARD */}
@@ -22,6 +42,12 @@ function App() {
       <section className="dashboard-grid">
         
         <PivoController />
+
+        {/* Passamos uma função para o Logger abrir a si mesmo em tela cheia */}
+        <MqttLogger 
+          onExpand={() => setIsLoggerFullScreen(true)} 
+          isFull={false} 
+        />
 
         {/* EXEMPLO PARA O FUTURO:
           <PainelMeteorologico />

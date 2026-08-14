@@ -24,6 +24,7 @@ const mqttClient = mqtt.connect(
 
 mqttClient.on('connect', () => {
     console.log('✅ Conectado ao HiveMQ!');
+    mqttClient.subscribe('pluvia/telemetria/pivo-teste');
 });
 
 mqttClient.on('error', (err) => {
@@ -39,11 +40,6 @@ mqttClient.on('close', () => {
 });
 
 let clientesConectados = [];
-
-mqttClient.on('connect', () => {
-  console.log('✅ API conectada ao broker MQTT!');
-  mqttClient.subscribe('pluvia/telemetria/pivo-teste');
-});
 
 mqttClient.on('message', (topic, message) => {
   if (topic === 'pluvia/telemetria/pivo-teste') {

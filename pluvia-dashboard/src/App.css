@@ -119,3 +119,29 @@ button, input {
     grid-template-columns: 1fr;
   }
 }
+
+/* edição para deixar tela cheia o card de logger */
+
+.full-screen-view {
+  width: 100vw;
+  height: 100vh;
+  background: #f4f6f8;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.btn-back {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-back:hover {
+  text-decoration: underline;
+}
