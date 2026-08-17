@@ -20,11 +20,13 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
   const [logs, setLogs] = useState<LogMessage[]>([])
   
   const clientRef = useRef<mqtt.MqttClient | null>(null)
-  const terminalEndRef = useRef<HTMLDivElement>(null)
+  const terminalWindowRef = useRef<HTMLDivElement>(null)
 
-  // Scroll automático APENAS dentro do container do terminal
+  // Scroll apenas interno dentro da caixa de logs sem mexer na tela inteira
   useEffect(() => {
-    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (terminalWindowRef.current) {
+      terminalWindowRef.current.scrollTop = terminalWindowRef.current.scrollHeight
+    }
   }, [logs])
 
   useEffect(() => {
@@ -42,7 +44,7 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
 
     client.on('message', (topic, message) => {
       setLogs((prev) => [
-        ...prev.slice(-199), // Limita a 200 mensagens para não pesar o navegador
+        ...prev.slice(-199),
         { 
           time: new Date().toLocaleTimeString(), 
           topic, 
@@ -54,7 +56,6 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
     return () => { if (client) client.end() }
   }, [])
 
-  // Inscrever em um novo tópico
   const handleSubscribe = () => {
     const topicoFormatado = topicoAlvo.trim()
     if (!topicoFormatado) return
@@ -70,7 +71,6 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
     }
   }
 
-  // Desinscrever de um tópico
   const handleUnsubscribe = (topicoParaRemover: string) => {
     if (clientRef.current?.connected) {
       clientRef.current.unsubscribe(topicoParaRemover, (err) => {
@@ -151,14 +151,14 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
           </div>
         </div>
 
-        {/* COLUNA DA DIREITA: TELA DO TERMINAL COM ALTURA FIXA */}
+        {/* COLUNA DA DIREITA: TERMINAL COM SCROLL ISOLADO */}
         <div className="terminal-wrapper">
           <div className="terminal-header">
             <span>SAÍDA DO CONSOLE MQTT</span>
             <span className="log-count">{logs.length} mensagens</span>
           </div>
 
-          <div className="terminal-window">
+          <div className="terminal-window" ref={terminalWindowRef}>
             {logs.length === 0 ? (
               <div className="terminal-empty">
                 Aguardando mensagens... Clique em INSCREVER para começar a escutar.
@@ -172,7 +172,6 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
                 </div>
               ))
             )}
-            <div ref={terminalEndRef} />
           </div>
         </div>
 
