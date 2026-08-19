@@ -31,6 +31,7 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
 
     useEffect(() => {
     const url = import.meta.env.VITE_MQTT_WS_URL;
+    console.log('🔌 URL MQTT:', url)
     const client = mqtt.connect(url, {
       username: import.meta.env.VITE_MQTT_USERNAME,
       password: import.meta.env.VITE_MQTT_PASSWORD,
@@ -38,9 +39,34 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
     })
 
     clientRef.current = client
-    client.on('connect', () => setStatus('CONECTADO'))
-    client.on('disconnect', () => setStatus('DESCONECTADO'))
-    client.on('error', () => setStatus('ERRO'))
+    // client.on('connect', () => setStatus('CONECTADO'))
+    // client.on('disconnect', () => setStatus('DESCONECTADO'))
+    // client.on('error', () => setStatus('ERRO'))
+
+    client.on('connect', () => {
+      console.log('✅ MQTT Logger conectado!')
+      setStatus('CONECTADO')
+    })
+
+    client.on('disconnect', () => {
+      console.log('🔴 MQTT Logger desconectado')
+      setStatus('DESCONECTADO')
+    })
+
+    client.on('reconnect', () => {
+      console.log('🔄 MQTT Logger tentando reconectar...')
+      setStatus('CONECTANDO')
+    })
+
+    client.on('offline', () => {
+      console.log('⚠️ MQTT Logger offline')
+      setStatus('DESCONECTADO')
+    })
+
+    client.on('error', (err) => {
+      console.error('❌ MQTT Logger erro:', err)
+      setStatus('ERRO')
+    })
 
     client.on('message', (topic, message) => {
       setLogs((prev) => [
@@ -57,29 +83,69 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
   }, [])
 
   const handleSubscribe = () => {
-    const topicoFormatado = topicoAlvo.trim()
-    if (!topicoFormatado) return
+    const topicoFormatado = topicoAlvo.trim();
 
-    if (clientRef.current?.connected) {
-      clientRef.current.subscribe(topicoFormatado, (err) => {
-        if (!err) {
-          if (!topicosInscritos.includes(topicoFormatado)) {
-            setTopicosInscritos((prev) => [...prev, topicoFormatado])
-          }
-        }
-      })
+    if (!topicoFormatado) return;
+
+    if (!clientRef.current) {
+      console.error('❌ Cliente MQTT não existe.');
+      return;
     }
-  }
+
+    if (!clientRef.current.connected) {
+      console.error('❌ Cliente MQTT ainda não está conectado.');
+      return;
+    }
+
+    console.log(`📡 Inscrevendo no tópico: ${topicoFormatado}`);
+
+    clientRef.current.subscribe(topicoFormatado, (err) => {
+      if (err) {
+        console.error(`❌ Erro ao inscrever no tópico ${topicoFormatado}:`, err);
+        return;
+      }
+
+      console.log(`✅ Inscrito no tópico: ${topicoFormatado}`);
+
+      setTopicosInscritos((prev) => {
+        if (prev.includes(topicoFormatado)) {
+          return prev;
+        }
+
+        return [...prev, topicoFormatado];
+      });
+    });
+  };
 
   const handleUnsubscribe = (topicoParaRemover: string) => {
-    if (clientRef.current?.connected) {
-      clientRef.current.unsubscribe(topicoParaRemover, (err) => {
-        if (!err) {
-          setTopicosInscritos((prev) => prev.filter((t) => t !== topicoParaRemover))
-        }
-      })
+    if (!clientRef.current) {
+      console.error('❌ Cliente MQTT não existe.');
+      return;
     }
-  }
+
+    if (!clientRef.current.connected) {
+      console.error('❌ Cliente MQTT não está conectado.');
+      return;
+    }
+
+    console.log(`📡 Cancelando inscrição: ${topicoParaRemover}`);
+
+    clientRef.current.unsubscribe(topicoParaRemover, (err) => {
+      if (err) {
+        console.error(
+          `❌ Erro ao cancelar inscrição de ${topicoParaRemover}:`,
+          err
+        );
+        return;
+      }
+
+      console.log(`✅ Inscrição cancelada: ${topicoParaRemover}`);
+
+      setTopicosInscritos((prev) =>
+        prev.filter((t) => t !== topicoParaRemover)
+      );
+    });
+  };
 
   return (
     <article className={`card logger-card ${isFull ? 'full-mode' : ''}`}>

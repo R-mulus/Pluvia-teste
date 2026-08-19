@@ -14,17 +14,46 @@ app.use(cors({
 app.use(express.json());
 
 const mqttClient = mqtt.connect(process.env.MQTT_BROKER_URL, {
-    username: process.env.MQTT_USERNAME,
-    password: process.env.MQTT_PASSWORD,
-    clientId: 'pluvia_api_' + Math.random().toString(16).slice(2, 8)
+  username: process.env.MQTT_USERNAME,
+  password: process.env.MQTT_PASSWORD,
+  clientId: 'pluvia_api_' + Math.random().toString(16).slice(2, 8)
 });
 
 let clientesConectados = [];
 
+mqttClient.on('connect', () => {
+  console.log('✅ API conectada ao MQTT');
+
+  mqttClient.subscribe(
+    'pluvia/telemetria/pivo-teste',
+    (err) => {
+      if (err) {
+        console.error('❌ Erro ao inscrever na telemetria:', err);
+        return;
+      }
+
+      console.log(
+        '📡 API inscrita em pluvia/telemetria/pivo-teste'
+      );
+    }
+  );
+});
+
+mqttClient.on('error', (err) => {
+  console.error('❌ Erro MQTT da API:', err);
+});
+
 mqttClient.on('message', (topic, message) => {
+  console.log(
+    `📩 Telemetria recebida [${topic}]: ${message.toString()}`
+  );
+
   if (topic === 'pluvia/telemetria/pivo-teste') {
     const dadosTelemetria = message.toString();
-    clientesConectados.forEach(cliente => cliente.write(`data: ${dadosTelemetria}\n\n`));
+
+    clientesConectados.forEach(cliente => {
+      cliente.write(`data: ${dadosTelemetria}\n\n`);
+    });
   }
 });
 
