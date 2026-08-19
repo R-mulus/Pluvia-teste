@@ -1,13 +1,12 @@
+require('dotenv').config(); // Adicione esta linha no topo
 const mqtt = require('mqtt');
 
-const mqttClient = mqtt.connect(
-  'mqtts://cacae761e2044bfcbeda02403a81dd9c.s1.eu.hivemq.cloud:8883',
-    {
-        username: 'esp32-pivo-teste',
-        password: '12345678',
-        clientId: 'esp32_mock_' + Math.random().toString(16).slice(2, 8)
-    }
-);
+// Substitua a conexão antiga (HiveMQ) por esta:
+const mqttClient = mqtt.connect(process.env.MQTT_BROKER_URL, {
+    username: process.env.MQTT_USERNAME,
+    password: process.env.MQTT_PASSWORD,
+    clientId: 'esp32_mock_' + Math.random().toString(16).slice(2, 8)
+});
 
 const TOPICO_COMANDO = 'pluvia/comando/pivo-teste';
 const TOPICO_TELEMETRIA = 'pluvia/telemetria/pivo-teste';
