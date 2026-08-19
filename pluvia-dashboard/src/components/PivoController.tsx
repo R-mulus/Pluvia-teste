@@ -17,7 +17,7 @@ type PayloadComando = {
 };
 
 export function PivoController({ onCommandSent }: PivoControllerProps) {
-  const [status, setStatus] = useState("DESLIGADO");
+  const [statusTexto, setStatusTexto] = useState("DESLIGADO");
   const [posicaoAtual, setPosicaoAtual] = useState(0);
   const [telemetriaAgua, setTelemetriaAgua] = useState(false);
   const [telemetriaLamina, setTelemetriaLamina] = useState(0);
@@ -29,17 +29,35 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
   const [vaiIrrigar, setVaiIrrigar] = useState(false);
   const [inputLamina, setInputLamina] = useState("10");
 
-  const formBloqueado = status === "RODANDO" || status === "PAUSADO";
+  const formBloqueado = statusTexto === "RODANDO" || statusTexto === "PAUSADO" || statusTexto === "AJUSTANDO POSIÇÃO";
 
   useEffect(() => {
     const tunelSSE = new EventSource("http://localhost:3000/api/telemetria");
+    
     tunelSSE.onmessage = (event) => {
-      const dados = JSON.parse(event.data);
-      setPosicaoAtual(dados.position);
-      setStatus(dados.status);
-      if (dados.irrigando !== undefined) setTelemetriaAgua(dados.irrigando);
-      if (dados.lamina !== undefined) setTelemetriaLamina(dados.lamina);
-      if (dados.velocidadeMs !== undefined) setTelemetriaVelocidade(dados.velocidadeMs);
+      const envelope = JSON.parse(event.data);
+      
+      if (envelope.tipo === 'telemetria' && envelope.dados) {
+        const d = envelope.dados;
+        
+        if (d.angulo_atual !== undefined) {
+          setPosicaoAtual(d.angulo_atual);
+        }
+        
+        setStatusTexto(prev => {
+          if (d.status_operacional === 1) return "RODANDO";
+          if (d.status_operacional === 2) return "AJUSTANDO POSIÇÃO";
+          if (d.status_operacional === 0) {
+            if (prev === "PAUSADO") return "PAUSADO";
+            return "DESLIGADO";
+          }
+          return prev;
+        });
+        
+        if (d.irrigacao_ativa !== undefined) setTelemetriaAgua(d.irrigacao_ativa === 1);
+        if (d.lamina_aplicada !== undefined) setTelemetriaLamina(d.lamina_aplicada);
+        if (d.velocidade_ms !== undefined) setTelemetriaVelocidade(d.velocidade_ms);
+      }
     };
     return () => tunelSSE.close();
   }, []);
@@ -52,13 +70,26 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
   const sentidoFinal = modoSentido === "auto" ? sentidoCalculado : modoSentido;
 
   const despacharComando = async (acao: "start" | "stop" | "resume" | "cancel") => {
-    if (acao === "start" && !posicaoAlvo) {
-      alert("Por favor, informe a posição alvo.");
-      return;
+    
+    if (acao === "start") {
+      if (!posicaoAlvo) {
+        alert("Por favor, informe a posição alvo.");
+        return;
+      }
+      
+      // VALIDAÇÃO REQUISITADA: Impede envio se o ponto de partida e chegada forem idênticos
+      if (valorAlvoCalc === valorInicialCalc) {
+        alert("Ação Bloqueada: O ângulo alvo não pode ser igual ao ângulo de partida (atual ou inicial).");
+        return;
+      }
+    }
+
+    if (acao === "cancel" || acao === "stop") {
+      setStatusTexto(acao === "stop" ? "PAUSADO" : "DESLIGADO");
     }
 
     const payloadBody: PayloadComando = {
-      deviceId: "pivo-teste",
+      deviceId: "pivo-01",
       command: acao,
     };
 
@@ -96,14 +127,13 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
             className="status-badge"
             style={{color: 'white',
               backgroundColor:
-                status === "RODANDO"
-                  ? "#059669"
-                  : status === "PAUSADO"
-                  ? "#d97706"
-                  : "#4b5563",
+                statusTexto === "RODANDO" ? "#059669" : 
+                statusTexto === "AJUSTANDO POSIÇÃO" ? "#8b5cf6" : 
+                statusTexto === "PAUSADO" ? "#d97706" : 
+                "#4b5563",
             }}
           >
-            {status}
+            {statusTexto}
           </span>
         </div>
 
@@ -112,36 +142,42 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
           <span>°</span>
         </div>
 
-        <div
-          className="position-info"
-          style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>Ângulo do pivô</span>
-            <span className="live">● AO VIVO</span>
+        {/* NOVO DESIGN DO PAINEL DE INFORMAÇÕES */}
+        <div style={{ 
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', 
+          marginTop: '1.5rem', padding: '1rem', 
+          backgroundColor: '#111827', borderRadius: '8px', border: '1px solid #374151' 
+        }}>
+          <div>
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sistema Hídrico</span>
+            <div style={{ fontWeight: 'bold', color: telemetriaAgua ? '#3b82f6' : '#9ca3af', marginTop: '0.25rem', fontSize: '0.9rem' }}>
+              {telemetriaAgua ? `Ativo (${telemetriaLamina} mm)` : "Inativo (A Seco)"}
+            </div>
           </div>
-          <hr style={{ borderColor: "#374151", margin: "0.5rem 0" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-            <span style={{ color: "#9ca3af" }}>Sistema Hídrico:</span>
-            <strong style={{ color: telemetriaAgua ? "#3b82f6" : "#9ca3af" }}>
-              {telemetriaAgua ? `💧 IRRIGANDO (${telemetriaLamina}mm)` : "☀️ SECO"}
-            </strong>
+          <div>
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Velocidade</span>
+            <div style={{ fontWeight: 'bold', color: '#e5e7eb', marginTop: '0.25rem', fontSize: '0.9rem' }}>
+              {telemetriaVelocidade > 0 && (statusTexto === "RODANDO" || statusTexto === "AJUSTANDO POSIÇÃO")
+                ? `${(1000 / telemetriaVelocidade).toFixed(2)} °/s`
+                : "0.00 °/s"}
+            </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-            <span style={{ color: "#9ca3af" }}>Velocidade atual:</span>
-            <strong>
-              {telemetriaVelocidade > 0 && status === "RODANDO"
-                ? `${(1000 / telemetriaVelocidade).toFixed(2)} °/seg`
-                : "0 °/seg"}
-            </strong>
+          <div>
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pressão na Linha</span>
+            <div style={{ fontWeight: 'bold', color: '#e5e7eb', marginTop: '0.25rem', fontSize: '0.9rem' }}>
+              {telemetriaAgua ? "4.5 Bar" : "0.0 Bar"}
+            </div>
+          </div>
+          <div>
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tensão da Rede</span>
+            <div style={{ fontWeight: 'bold', color: '#e5e7eb', marginTop: '0.25rem', fontSize: '0.9rem' }}>
+              380 V
+            </div>
           </div>
         </div>
       </article>
 
-      <article
-        className="card control-card"
-        style={{ opacity: formBloqueado ? 0.7 : 1, transition: "opacity 0.3s" }}
-      >
+      <article className="card control-card" style={{ opacity: formBloqueado ? 0.7 : 1, transition: "opacity 0.3s" }}>
         <div className="card-header">
           <div>
             <span className="card-label">
@@ -151,62 +187,18 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "1rem",
-            marginTop: "1rem",
-            pointerEvents: formBloqueado ? "none" : "auto",
-          }}
-        >
-          <div
-            style={{
-              padding: "1rem",
-              
-              borderRadius: "8px",
-              border: "1px solid #374151",
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={vaiIrrigar}
-                onChange={(e) => setVaiIrrigar(e.target.checked)}
-                style={{ width: "18px", height: "18px" }}
-              />
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem", pointerEvents: formBloqueado ? "none" : "auto" }}>
+          <div style={{ padding: "1rem", borderRadius: "8px", border: "1px solid #374151" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontWeight: "bold" }}>
+              <input type="checkbox" checked={vaiIrrigar} onChange={(e) => setVaiIrrigar(e.target.checked)} style={{ width: "18px", height: "18px" }} />
               Ativar Bomba D'água
             </label>
 
             {vaiIrrigar && (
               <div style={{ marginTop: "1rem" }}>
-                <label
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "#9ca3af",
-                    marginBottom: "0.25rem",
-                    display: "block",
-                  }}
-                >
-                  Lâmina D'água (mm)
-                </label>
+                <label style={{ fontSize: "0.85rem", color: "#9ca3af", marginBottom: "0.25rem", display: "block" }}>Lâmina D'água (mm)</label>
                 <div className="input-group">
-                  <input
-                    type="number"
-                    value={inputLamina}
-                    style={{border: "1px solid #374151",}}
-                    onChange={(e) => setInputLamina(e.target.value)}
-                    placeholder="Ex: 10mm"
-                    min="1"
-                  />
+                  <input type="number" value={inputLamina} style={{border: "1px solid #374151"}} onChange={(e) => setInputLamina(e.target.value)} placeholder="Ex: 10" min="1" />
                 </div>
               </div>
             )}
@@ -214,74 +206,23 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
 
           <div style={{ display: "flex", gap: "1rem" }}>
             <div style={{ flex: 1 }}>
-              <label
-                style={{
-                  fontSize: "0.85rem",
-                  color: "#9ca3af",
-                  marginBottom: "0.25rem",
-                  display: "block",
-                }}
-              >
-                Início
-              </label>
+              <label style={{ fontSize: "0.85rem", color: "#9ca3af", marginBottom: "0.25rem", display: "block" }}>Início</label>
               <div className="input-group">
-                <input
-                  type="number"
-                  value={posicaoInicial}
-                  style={{border: "1px solid #374151",}}
-                  onChange={(e) => setPosicaoInicial(e.target.value)}
-                  placeholder="Ex: 25º"
-                />
+                <input type="number" value={posicaoInicial} style={{border: "1px solid #374151"}} onChange={(e) => setPosicaoInicial(e.target.value)} placeholder="Ex: 25" />
               </div>
             </div>
 
             <div style={{ flex: 1 }}>
-              <label
-                style={{
-                  fontSize: "0.85rem",
-                  color: "#9ca3af",
-                  marginBottom: "0.25rem",
-                  display: "block",
-                }}
-              >
-                Alvo
-              </label>
+              <label style={{ fontSize: "0.85rem", color: "#9ca3af", marginBottom: "0.25rem", display: "block" }}>Alvo</label>
               <div className="input-group">
-                <input
-                  id="target"
-                  type="number"
-                  style={{border: "1px solid #374151",}}
-                  value={posicaoAlvo}
-                  onChange={(e) => setPosicaoAlvo(e.target.value)}
-                  placeholder="Ex: 90º"
-                />
+                <input id="target" type="number" style={{border: "1px solid #374151"}} value={posicaoAlvo} onChange={(e) => setPosicaoAlvo(e.target.value)} placeholder="Ex: 90" />
               </div>
             </div>
           </div>
 
           <div>
-            <label
-              style={{
-                fontSize: "0.85rem",
-                color: "#9ca3af",
-                marginBottom: "0.25rem",
-                display: "block",
-              }}
-            >
-              Sentido de Rotação
-            </label>
-            <select
-              value={modoSentido}
-              onChange={(e) => setModoSentido(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                backgroundColor: "white",
-                color: "black",
-                border: "1px solid #374151",
-                borderRadius: "6px",
-              }}
-            >
+            <label style={{ fontSize: "0.85rem", color: "#9ca3af", marginBottom: "0.25rem", display: "block" }}>Sentido de Rotação</label>
+            <select value={modoSentido} onChange={(e) => setModoSentido(e.target.value)} style={{ width: "100%", padding: "0.75rem", backgroundColor: "white", color: "black", border: "1px solid #374151", borderRadius: "6px" }}>
               <option value="auto">Automático ({sentidoCalculado.toUpperCase()})</option>
               <option value="horario">Forçar HORÁRIO</option>
               <option value="antihorario">Forçar ANTI-HORÁRIO</option>
@@ -289,32 +230,22 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
           </div>
         </div>
 
-        {/* RENDERIZAÇÃO DINÂMICA DOS BOTÕES */}
         <div style={{ marginTop: "1.5rem", display: "flex", gap: "0.5rem" }}>
-          {status === "RODANDO" ? (
-            <button
-              onClick={() => despacharComando("stop")}
-              style={{ width: "100%", backgroundColor: "#ef4444", color: "white" }}
-            >
-              🛑 PARAR PIVÔ
+          {statusTexto === "RODANDO" || statusTexto === "AJUSTANDO POSIÇÃO" ? (
+            <button onClick={() => despacharComando("stop")} style={{ width: "100%", backgroundColor: "#ef4444", color: "white", fontWeight: "bold" }}>
+              PARAR PIVÔ
             </button>
-          ) : status === "PAUSADO" ? (
+          ) : statusTexto === "PAUSADO" ? (
             <>
-              <button
-                onClick={() => despacharComando("resume")}
-                style={{ flex: 1, backgroundColor: "#3b82f6", color: "white" }}
-              >
-                ▶️ RETOMAR
+              <button onClick={() => despacharComando("resume")} style={{ flex: 1, backgroundColor: "#3b82f6", color: "white", fontWeight: "bold" }}>
+                RETOMAR
               </button>
-              <button
-                onClick={() => despacharComando("cancel")}
-                style={{ flex: 1, backgroundColor: "#4b5563", color: "white" }}
-              >
-                ⏹️ CANCELAR
+              <button onClick={() => despacharComando("cancel")} style={{ flex: 1, backgroundColor: "#4b5563", color: "white", fontWeight: "bold" }}>
+                CANCELAR
               </button>
             </>
           ) : (
-            <button onClick={() => despacharComando("start")} style={{ width: "100%" }}>
+            <button onClick={() => despacharComando("start")} style={{ width: "100%", fontWeight: "bold" }}>
               START PIVÔ
             </button>
           )}

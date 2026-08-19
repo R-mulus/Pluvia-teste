@@ -1,147 +1,159 @@
 /* src/App.css */
 * {
-  box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 :root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #172033;
-  background: #f4f6f8;
+	font-family:
+		Inter,
+		system-ui,
+		-apple-system,
+		BlinkMacSystemFont,
+		"Segoe UI",
+		sans-serif;
+	color: #172033;
+	background: #f4f6f8;
 }
 
 body {
-  margin: 0;
-  min-width: 320px;
-  background-color: rgb(231, 231, 231);
+	margin: 0;
+	min-width: 320px;
+	background-color: rgb(231, 231, 231);
 }
 
-button, input {
-  font: inherit;
+/* Bloqueia o scroll do fundo quando o logger estiver expandido */
+body:has(.full-mode) {
+	overflow: hidden;
+}
+
+button,
+input {
+	font: inherit;
 }
 
 /* LAYOUT PRINCIPAL */
 .dashboard {
-  min-height: 100vh;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  /* Joga todo o conteúdo para o TOPO da tela */
-  justify-content: flex-start; 
-  padding: 2rem;
-  /* Permite que o dashboard use toda a largura disponível da tela, colando na esquerda */
-  max-width: 100%;
-  gap: 1rem;
+	min-height: 100vh;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	/* Joga todo o conteúdo para o TOPO da tela */
+	justify-content: flex-start;
+	padding: 2rem;
+	/* Permite que o dashboard use toda a largura disponível da tela, colando na esquerda */
+	max-width: 100%;
+	gap: 1rem;
 }
 
 /* HEADER DO DASHBOARD */
 .dashboard-header {
-  width: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 28px;
+	width: 100%;
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	margin-bottom: 28px;
 }
 
 .eyebrow {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: #6b7280;
-  margin-bottom: 8px;
+	display: block;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	color: #6b7280;
+	margin-bottom: 8px;
 }
 
 .dashboard-header h1 {
-  margin: 0;
-  color: #4b5563;
-  font-size: 32px;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
+	margin: 0;
+	color: #4b5563;
+	font-size: 32px;
+	line-height: 1.1;
+	letter-spacing: -0.03em;
 }
 
 .dashboard-header p {
-  margin: 8px 0 0;
-  color: #6b7280;
-  font-size: 15px;
+	margin: 8px 0 0;
+	color: #6b7280;
+	font-size: 15px;
 }
 
 /* CONEXÃO */
 .connection {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  font-size: 13px;
-  font-weight: 600;
-  color: #4b5563;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: 999px;
+	background: #ffffff;
+	border: 1px solid #e5e7eb;
+	font-size: 13px;
+	font-weight: 600;
+	color: #4b5563;
 }
 
 .connection-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 4px #dcfce7;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #22c55e;
+	box-shadow: 0 0 0 4px #dcfce7;
 }
 
 /* GRID */
 .dashboard-grid {
-  width: 100%;
-  
-  display: grid;
-  
-  /* Trocamos auto-fit por auto-fill. 
+	width: 100%;
+
+	display: grid;
+
+	/* Trocamos auto-fit por auto-fill. 
      Isso força os cards a se alinharem da esquerda para a direita. 
      Se houver espaço sobrando no final da linha, ele fica vazio em vez de esticar os cards. */
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  
-  gap: 20px;
-  align-items: stretch; 
+	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+
+	gap: 20px;
+	align-items: stretch;
 }
 
 /* RESPONSIVO GLOBAL */
 @media (max-width: 700px) {
-  .dashboard {
-    padding: 24px 16px;
-  }
-  .dashboard-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .dashboard-header h1 {
-    font-size: 27px;
-  }
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
+	.dashboard {
+		padding: 24px 16px;
+	}
+	.dashboard-header {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 16px;
+	}
+	.dashboard-header h1 {
+		font-size: 27px;
+	}
+	.dashboard-grid {
+		grid-template-columns: 1fr;
+	}
 }
 
 /* edição para deixar tela cheia o card de logger */
 
 .full-screen-view {
-  width: 100vw;
-  height: 100vh;
-  background: #f4f6f8;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+	width: 100vw;
+	height: 100vh;
+	background: #f4f6f8;
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
 }
 
 .btn-back {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  color: #2563eb;
-  font-weight: 700;
-  cursor: pointer;
-  font-size: 14px;
+	align-self: flex-start;
+	background: none;
+	border: none;
+	color: #2563eb;
+	font-weight: 700;
+	cursor: pointer;
+	font-size: 14px;
 }
 
 .btn-back:hover {
-  text-decoration: underline;
+	text-decoration: underline;
 }

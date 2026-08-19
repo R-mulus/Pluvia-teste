@@ -1,56 +1,61 @@
-require('dotenv').config(); // Adicione esta linha no topo
+require('dotenv').config();
 const mqtt = require('mqtt');
 
-// Substitua a conexão antiga (HiveMQ) por esta:
 const mqttClient = mqtt.connect(process.env.MQTT_BROKER_URL, {
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,
     clientId: 'esp32_mock_' + Math.random().toString(16).slice(2, 8)
 });
 
-const TOPICO_COMANDO = 'pluvia/comando/pivo-teste';
-const TOPICO_TELEMETRIA = 'pluvia/telemetria/pivo-teste';
+const FAZENDA_ID = 'fazenda-01';
+const PIVO_ID = 'pivo-01';
+const TOPICO_COMANDO = `pluvia/v1/fazendas/${FAZENDA_ID}/pivos/${PIVO_ID}/comando`;
+const TOPICO_TELEMETRIA = `pluvia/v1/fazendas/${FAZENDA_ID}/pivos/${PIVO_ID}/telemetria`;
+const TOPICO_RESPOSTA = `pluvia/v1/fazendas/${FAZENDA_ID}/pivos/${PIVO_ID}/comando/resposta`;
+const TOPICO_DEBUG = `pluvia/sistema/debug`;
 
-// Estados Globais
 let posicaoAtual = 0;
-let statusPivo = 'DESLIGADO'; // Pode ser: DESLIGADO, RODANDO, PAUSADO
+let statusOperacional = 0; 
 let motorInterval = null;
 
-let irrigandoAtual = false;
+let irrigandoAtual = 0;
 let laminaAtual = 0;
-let velocidadeAtualMs = 1000; 
-
-// Variáveis de Missão (Memória do CLP para conseguir retomar)
 let alvoAtual = 0;
-let sentidoAtual = 'horario';
+let sentidoAtual = 0;
+let velocidadeAtualMs = 1000;
+
+let missaoPendente = { alvo: 0, sentido: 0, irrigacao: 0, lamina: 0 };
 
 mqttClient.on('connect', () => {
-  console.log('🤖 Falso ESP32 conectado (Máquina de Estados)!');
+  console.log('🤖 Gêmeo Digital do CLP Delta conectado!');
   mqttClient.subscribe(TOPICO_COMANDO);
+  mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ acao: "Hardware Simulado Online" }));
 });
 
 function enviarTelemetria() {
   const payload = JSON.stringify({
-    deviceId: 'pivo-teste',
-    status: statusPivo,
-    position: posicaoAtual,
-    irrigando: irrigandoAtual,
-    lamina: laminaAtual,
-    velocidadeMs: velocidadeAtualMs,
-    timestamp: new Date().toISOString()
+    meta: { timestamp: Math.floor(Date.now() / 1000), pivo_id: PIVO_ID },
+    tipo: 'telemetria',
+    dados: {
+      angulo_atual: posicaoAtual,
+      pressao: irrigandoAtual ? 4.5 : 0.0,
+      tensao_rede: 380,
+      tensao_motor: statusOperacional ? 380 : 0,
+      corrente: statusOperacional ? 12.3 : 0.0,
+      status_operacional: statusOperacional,
+      lamina_aplicada: laminaAtual,
+      irrigacao_ativa: irrigandoAtual,
+      velocidade_ms: velocidadeAtualMs
+    }
   });
-
   mqttClient.publish(TOPICO_TELEMETRIA, payload);
-  console.log(`📡 Status: ${statusPivo} | Posição: ${posicaoAtual}° | Água: ${irrigandoAtual ? 'SIM' : 'NÃO'}`);
 }
 
-// O motor foi isolado em uma função para podermos chamar no "start" e no "resume"
 function iniciarMotor() {
   if (motorInterval) clearInterval(motorInterval);
   
   motorInterval = setInterval(() => {
-    // 1. Move fisicamente 1 grau
-    if (sentidoAtual === 'horario') {
+    if (sentidoAtual === 0) {
       posicaoAtual++;
       if (posicaoAtual >= 360) posicaoAtual = 0;
     } else {
@@ -58,78 +63,101 @@ function iniciarMotor() {
       if (posicaoAtual < 0) posicaoAtual = 359;
     }
     
-    // 2. Envia a nova posição
+    // Atualiza o dashboard
     enviarTelemetria();
 
-    // 3. Verifica se chegou no alvo
+    // 1. Gera log visível no terminal do VSCode a cada grau!
+    console.log(`[MOTOR] Posição Atual: ${posicaoAtual}° -> Buscando Alvo: ${alvoAtual}°`);
+
     if (posicaoAtual === alvoAtual) {
-      console.log('✅ Posição alvo alcançada! Desligando motor e bomba.');
-      statusPivo = 'DESLIGADO';
-      irrigandoAtual = false;
-      enviarTelemetria();
-      clearInterval(motorInterval);
+      if (statusOperacional === 2) {
+        console.log('🔄 Ajuste concluído. Engatando missão principal.');
+        mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ acao: "Ajuste concluído. Engatando missão." }));
+        
+        statusOperacional = 1;
+        alvoAtual = missaoPendente.alvo;
+        sentidoAtual = missaoPendente.sentido;
+        irrigandoAtual = missaoPendente.irrigacao;
+        laminaAtual = irrigandoAtual ? missaoPendente.lamina : 0;
+        velocidadeAtualMs = irrigandoAtual ? Math.max(laminaAtual * 200, 200) : 400;
+        iniciarMotor(); 
+      } else {
+        console.log('✅ Alvo final alcançado. Desligando.');
+        mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ acao: "Alvo alcançado. Desligando motores." }));
+        
+        statusOperacional = 0;
+        irrigandoAtual = 0;
+        clearInterval(motorInterval);
+        enviarTelemetria();
+      }
     }
   }, velocidadeAtualMs); 
 }
 
 mqttClient.on('message', (topic, message) => {
-  const dados = JSON.parse(message.toString());
+  const envelope = JSON.parse(message.toString());
   
-  if (dados.command) {
-    const acao = dados.command.action;
+  if (envelope.tipo === 'instantaneo' && envelope.dados) {
+    const { start, direcao, irrigacao, lamina, angulo_inicial, angulo_final } = envelope.dados;
 
-    // ----- ESTADO: START -----
-    if (acao === 'start') {
-      alvoAtual = Number(dados.command.targetPosition);
-      sentidoAtual = dados.command.direction;
-      const inicio = dados.command.startPosition;
+    if (start === 1) { 
+      if (angulo_inicial !== undefined && angulo_inicial !== posicaoAtual && statusOperacional === 0) {
+        console.log(`\n⚙️ Modo de Ajuste: Movendo de ${posicaoAtual}° para ${angulo_inicial}° a seco.`);
+        mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ acao: `Iniciando ajuste de ${posicaoAtual}° para ${angulo_inicial}°` }));
+        
+        statusOperacional = 2; 
+        missaoPendente.alvo = angulo_final;
+        missaoPendente.sentido = direcao;
+        missaoPendente.irrigacao = irrigacao;
+        missaoPendente.lamina = lamina;
+
+        alvoAtual = angulo_inicial;
+        sentidoAtual = angulo_inicial > posicaoAtual ? 0 : 1; 
+        irrigandoAtual = 0; 
+        velocidadeAtualMs = 200; 
+      } 
+      else {
+        console.log(`\n⚡ Missão Principal (M100=1). Alvo: ${angulo_final}°`);
+        mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ acao: "Iniciando missão principal", alvo: angulo_final }));
+        
+        statusOperacional = 1;
+        if (angulo_final !== undefined) alvoAtual = angulo_final;
+        if (direcao !== undefined) sentidoAtual = direcao;
+        if (irrigacao !== undefined) {
+            irrigandoAtual = irrigacao;
+            laminaAtual = irrigandoAtual ? lamina : 0;
+        }
+        velocidadeAtualMs = irrigandoAtual ? Math.max(laminaAtual * 200, 200) : 400;
+      }
+
+      enviarTelemetria();
       
-      if (inicio !== undefined && inicio !== null && inicio !== '') {
-          posicaoAtual = Number(inicio);
+      const resp = JSON.stringify({
+        meta: { msg_id_referencia: envelope.meta.msg_id, timestamp_resposta: Math.floor(Date.now() / 1000) },
+        tipo: 'feedback',
+        dados: { status: 'sucesso', detalhe: 'Comando processado com exito.' }
+      });
+      mqttClient.publish(TOPICO_RESPOSTA, resp);
+
+      if (posicaoAtual !== alvoAtual) {
+          iniciarMotor();
+      } else if (statusOperacional === 2) {
+          iniciarMotor(); 
       }
-
-      irrigandoAtual = !!dados.command.irrigar;
-      laminaAtual = irrigandoAtual ? Number(dados.command.lamina) : 0;
-      velocidadeAtualMs = irrigandoAtual ? Math.max(laminaAtual * 200, 200) : 400;
-
-      statusPivo = 'RODANDO';
-      console.log(`\n⚡ INICIANDO MISSÃO: De ${posicaoAtual}° para ${alvoAtual}° (Sentido: ${sentidoAtual})`);
-      enviarTelemetria();
-
-      if (posicaoAtual === alvoAtual) {
-          statusPivo = 'DESLIGADO';
-          irrigandoAtual = false;
-          enviarTelemetria();
-          return;
-      }
-      iniciarMotor();
-    }
-    
-    // ----- ESTADO: STOP (Pausa) -----
-    else if (acao === 'stop') {
+    } 
+    else if (start === 0) { 
       console.log('\n🛑 PARADA SOLICITADA. Cortando motores.');
+      mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ acao: "Motores cortados." }));
+      
       if (motorInterval) clearInterval(motorInterval);
-      statusPivo = 'PAUSADO';
-      enviarTelemetria();
-    }
-
-    // ----- ESTADO: RESUME (Retomar) -----
-    else if (acao === 'resume') {
-      if (statusPivo === 'PAUSADO') {
-        console.log('\n▶️ RETOMANDO OPERAÇÃO. Religando motores.');
-        statusPivo = 'RODANDO';
-        enviarTelemetria();
-        iniciarMotor();
-      }
-    }
-
-    // ----- ESTADO: CANCEL (Abortar) -----
-    else if (acao === 'cancel') {
-      console.log('\n⏹️ MISSÃO ABORTADA PELO OPERADOR.');
-      if (motorInterval) clearInterval(motorInterval);
-      statusPivo = 'DESLIGADO';
-      irrigandoAtual = false;
+      statusOperacional = 0;
       enviarTelemetria();
     }
   }
 });
+
+setInterval(() => {
+  if (statusOperacional === 0) {
+    enviarTelemetria();
+  }
+}, 2000);

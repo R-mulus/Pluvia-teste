@@ -250,13 +250,38 @@
   justify-content: center;
 }
 
-/* MODO TELA CHEIA */
+/* =========================================
+   MODO TELA CHEIA (FULLSCREEN LOGGER)
+   ========================================= */
 .logger-card.full-mode {
-  height: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  margin: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
 }
 
+/* Faz o conteúdo interno esticar para preencher a tela toda */
+.logger-card.full-mode .logger-content-split {
+  height: 100%;
+  flex: 1;
+}
+
+/* Garante que o terminal da direita ocupe todo o espaço restante */
 .logger-card.full-mode .terminal-wrapper {
-  height: calc(100vh - 120px); /* Ocupa quase a tela inteira em modo focado */
+  height: 100%;
+  flex: 1;
+}
+
+/* Deixa a caixa de logs gigante */
+.logger-card.full-mode .terminal-window {
+  height: calc(100vh - 150px); /* Ajuste dinâmico descontando o cabeçalho */
+  max-height: none;
 }
 
 /* RESPONSIVO PARA DISPOSITIVOS MÓVEIS */
@@ -271,3 +296,4 @@
     height: 350px;
   }
 }
+

@@ -19,19 +19,36 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
   const [topicosInscritos, setTopicosInscritos] = useState<string[]>([])
   const [logs, setLogs] = useState<LogMessage[]>([])
   
+  // Ocultar apenas pings ociosos
+  const [ocultarPings, setOcultarPings] = useState(true)
+  
   const clientRef = useRef<mqtt.MqttClient | null>(null)
   const terminalWindowRef = useRef<HTMLDivElement>(null)
 
-  // Scroll apenas interno dentro da caixa de logs sem mexer na tela inteira
   useEffect(() => {
     if (terminalWindowRef.current) {
       terminalWindowRef.current.scrollTop = terminalWindowRef.current.scrollHeight
     }
   }, [logs])
 
-    useEffect(() => {
+  const pushSysLog = (msg: string) => {
+    setLogs(prev => [...prev.slice(-199), { 
+      time: new Date().toLocaleTimeString(), 
+      topic: '[DASHBOARD SYS]', 
+      payload: msg 
+    }])
+  }
+
+  const ocultarPingsRef = useRef(ocultarPings);
+  useEffect(() => {
+    ocultarPingsRef.current = ocultarPings;
+  }, [ocultarPings]);
+
+  useEffect(() => {
     const url = import.meta.env.VITE_MQTT_WS_URL;
-    console.log('🔌 URL MQTT:', url)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    pushSysLog(`Tentando conectar no broker: ${url}`);
+
     const client = mqtt.connect(url, {
       username: import.meta.env.VITE_MQTT_USERNAME,
       password: import.meta.env.VITE_MQTT_PASSWORD,
@@ -39,43 +56,51 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
     })
 
     clientRef.current = client
-    // client.on('connect', () => setStatus('CONECTADO'))
-    // client.on('disconnect', () => setStatus('DESCONECTADO'))
-    // client.on('error', () => setStatus('ERRO'))
 
     client.on('connect', () => {
-      console.log('✅ MQTT Logger conectado!')
       setStatus('CONECTADO')
+      pushSysLog('✅ Conexão WebSocket estabelecida.')
+      
+      client.subscribe('pluvia/#', (err) => {
+        if (!err) {
+          setTopicosInscritos(prev => prev.includes('pluvia/#') ? prev : [...prev, 'pluvia/#'])
+          pushSysLog('🎧 Auto-inscrito no coringa "pluvia/#".');
+        }
+      })
     })
 
     client.on('disconnect', () => {
-      console.log('🔴 MQTT Logger desconectado')
       setStatus('DESCONECTADO')
-    })
-
-    client.on('reconnect', () => {
-      console.log('🔄 MQTT Logger tentando reconectar...')
-      setStatus('CONECTANDO')
-    })
-
-    client.on('offline', () => {
-      console.log('⚠️ MQTT Logger offline')
-      setStatus('DESCONECTADO')
+      pushSysLog('❌ Desconectado do Broker MQTT.')
     })
 
     client.on('error', (err) => {
-      console.error('❌ MQTT Logger erro:', err)
       setStatus('ERRO')
+      pushSysLog(`⚠️ ERRO DE REDE: ${err.message}`)
     })
 
     client.on('message', (topic, message) => {
+      let displayPayload = message.toString();
+      let pacoteJson = null;
+
+      try {
+        pacoteJson = JSON.parse(displayPayload);
+        displayPayload = JSON.stringify(pacoteJson, null, 2);
+      } catch (e) {
+        console.log("ERRO DO MQTT LOGGER: ", e);
+        
+      }
+
+      // FILTRO INTELIGENTE: Verifica se é telemetria E se o motor está parado (status 0)
+      if (ocultarPingsRef.current && topic.includes('telemetria') && pacoteJson && pacoteJson.dados) {
+        if (pacoteJson.dados.status_operacional === 0) {
+          return; // Aborta e não exibe na tela
+        }
+      }
+
       setLogs((prev) => [
         ...prev.slice(-199),
-        { 
-          time: new Date().toLocaleTimeString(), 
-          topic, 
-          payload: message.toString() 
-        }
+        { time: new Date().toLocaleTimeString(), topic, payload: displayPayload }
       ])
     })
 
@@ -83,75 +108,46 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
   }, [])
 
   const handleSubscribe = () => {
-    const topicoFormatado = topicoAlvo.trim();
-
-    if (!topicoFormatado) return;
-
-    if (!clientRef.current) {
-      console.error('❌ Cliente MQTT não existe.');
+    const topicoFormatado = topicoAlvo.trim()
+    if (!topicoFormatado) {
+      pushSysLog(`⚠️ Digite um tópico antes de inscrever.`);
       return;
     }
 
-    if (!clientRef.current.connected) {
-      console.error('❌ Cliente MQTT ainda não está conectado.');
+    if (topicosInscritos.includes(topicoFormatado)) {
+      pushSysLog(`⚠️ Você já está inscrito no tópico: ${topicoFormatado}`);
       return;
     }
 
-    console.log(`📡 Inscrevendo no tópico: ${topicoFormatado}`);
-
-    clientRef.current.subscribe(topicoFormatado, (err) => {
-      if (err) {
-        console.error(`❌ Erro ao inscrever no tópico ${topicoFormatado}:`, err);
-        return;
-      }
-
-      console.log(`✅ Inscrito no tópico: ${topicoFormatado}`);
-
-      setTopicosInscritos((prev) => {
-        if (prev.includes(topicoFormatado)) {
-          return prev;
+    if (clientRef.current?.connected) {
+      clientRef.current.subscribe(topicoFormatado, (err) => {
+        if (!err) {
+          setTopicosInscritos((prev) => [...prev, topicoFormatado])
+          pushSysLog(`✅ Inscrição manual realizada: ${topicoFormatado}`);
+        } else {
+          pushSysLog(`❌ Erro ao inscrever: ${err.message}`);
         }
-
-        return [...prev, topicoFormatado];
-      });
-    });
-  };
+      })
+    } else {
+      pushSysLog(`❌ Erro: O MQTT não está conectado.`);
+    }
+  }
 
   const handleUnsubscribe = (topicoParaRemover: string) => {
-    if (!clientRef.current) {
-      console.error('❌ Cliente MQTT não existe.');
-      return;
+    if (clientRef.current?.connected) {
+      clientRef.current.unsubscribe(topicoParaRemover, (err) => {
+        if (!err) {
+          setTopicosInscritos((prev) => prev.filter((t) => t !== topicoParaRemover))
+          pushSysLog(`🗑️ Inscrição removida: ${topicoParaRemover}`);
+        }
+      })
     }
-
-    if (!clientRef.current.connected) {
-      console.error('❌ Cliente MQTT não está conectado.');
-      return;
-    }
-
-    console.log(`📡 Cancelando inscrição: ${topicoParaRemover}`);
-
-    clientRef.current.unsubscribe(topicoParaRemover, (err) => {
-      if (err) {
-        console.error(
-          `❌ Erro ao cancelar inscrição de ${topicoParaRemover}:`,
-          err
-        );
-        return;
-      }
-
-      console.log(`✅ Inscrição cancelada: ${topicoParaRemover}`);
-
-      setTopicosInscritos((prev) =>
-        prev.filter((t) => t !== topicoParaRemover)
-      );
-    });
-  };
+  }
 
   return (
     <article className={`card logger-card ${isFull ? 'full-mode' : ''}`}>
       <div className="logger-content-split">
         
-        {/* COLUNA DA ESQUERDA: CONTROLES E TÓPICOS */}
         <div className="logger-sidebar">
           <div className="card-header-logger">
             <span className="card-label">MONITORAMENTO MQTT</span>
@@ -168,11 +164,9 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
                 ● {status}
               </span>
               
-              {!isFull && (
-                <button className="expand-btn" onClick={onExpand} title="Modo Tela Cheia">
-                  ⛶
-                </button>
-              )}
+              <button className="expand-btn" onClick={onExpand} title={isFull ? "Sair da Tela Cheia" : "Modo Tela Cheia"}>
+                {isFull ? '✖' : '⛶'}
+              </button>
             </div>
           </div>
 
@@ -184,7 +178,7 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
                 type="text" 
                 value={topicoAlvo}
                 onChange={(e) => setTopicoAlvo(e.target.value)}
-                placeholder="Ex: pluvia/telemetria/#"
+                placeholder="Ex: pluvia/sistema/debug"
               />
               <div className="button-row">
                 <button onClick={handleSubscribe} className="btn-primary">INSCREVER</button>
@@ -192,7 +186,19 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
               </div>
             </div>
 
-            {/* LISTA DE TÓPICOS INSCRITOS */}
+            {/* CHECKBOX ATUALIZADO */}
+            <div style={{ marginTop: '1rem', padding: '0.5rem', backgroundColor: '#1f2937', borderRadius: '6px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', color: '#d1d5db' }}>
+                <input 
+                  type="checkbox" 
+                  checked={ocultarPings} 
+                  onChange={(e) => setOcultarPings(e.target.checked)} 
+                  style={{ cursor: 'pointer' }}
+                />
+                Ocultar pings de Heartbeat (Pivô Parado)
+              </label>
+            </div>
+
             <div className="topics-section">
               <span className="section-subtitle">Tópicos Inscritos ({topicosInscritos.length}):</span>
               {topicosInscritos.length === 0 ? (
@@ -217,7 +223,6 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
           </div>
         </div>
 
-        {/* COLUNA DA DIREITA: TERMINAL COM SCROLL ISOLADO */}
         <div className="terminal-wrapper">
           <div className="terminal-header">
             <span>SAÍDA DO CONSOLE MQTT</span>
@@ -227,14 +232,18 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
           <div className="terminal-window" ref={terminalWindowRef}>
             {logs.length === 0 ? (
               <div className="terminal-empty">
-                Aguardando mensagens... Clique em INSCREVER para começar a escutar.
+                Aguardando mensagens... 
               </div>
             ) : (
               logs.map((log, i) => (
-                <div key={i} className="log-entry">
-                  <span className="log-time">[{log.time}]</span>
-                  <span className="log-topic">{log.topic}</span>
-                  <span className="log-payload">{log.payload}</span>
+                <div key={i} className="log-entry" style={{ paddingBottom: '0.5rem', borderBottom: '1px solid #333', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem', color: '#888', fontSize: '0.8rem', marginBottom: '0.2rem' }}>
+                    <span className="log-time">[{log.time}]</span>
+                    <strong className="log-topic" style={{ color: log.topic.includes('DASHBOARD') ? '#fbbf24' : '#60a5fa' }}>{log.topic}</strong>
+                  </div>
+                  <pre className="log-payload" style={{ margin: 0, color: '#d1d5db', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {log.payload}
+                  </pre>
                 </div>
               ))
             )}
