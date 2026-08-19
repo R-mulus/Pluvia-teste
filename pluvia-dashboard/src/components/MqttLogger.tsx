@@ -29,11 +29,11 @@ export function MqttLogger({ onExpand, isFull }: MqttLoggerProps) {
     }
   }, [logs])
 
-  useEffect(() => {
-    const url = 'wss://cacae761e2044bfcbeda02403a81dd9c.s1.eu.hivemq.cloud:8884/mqtt'
+    useEffect(() => {
+    const url = import.meta.env.VITE_MQTT_WS_URL;
     const client = mqtt.connect(url, {
-      username: 'user-logger',
-      password: '12345678',
+      username: import.meta.env.VITE_MQTT_USERNAME,
+      password: import.meta.env.VITE_MQTT_PASSWORD,
       clientId: 'react_logger_' + Math.random().toString(16).slice(2, 8)
     })
 

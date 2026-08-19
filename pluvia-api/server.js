@@ -1,3 +1,4 @@
+require('dotenv').config(); // Adicione no topo do arquivo
 const express = require('express');
 const cors = require('cors');
 const mqtt = require('mqtt');
@@ -12,30 +13,10 @@ app.use(cors({
 
 app.use(express.json());
 
-const mqttClient = mqtt.connect(
-  'mqtts://cacae761e2044bfcbeda02403a81dd9c.s1.eu.hivemq.cloud:8883',
-  {
-      username: 'pluvia-api',
-      password: '12345678',
-      clientId: 'pluvia_api_' + Math.random().toString(16).slice(2, 8)
-  }
-);
-
-mqttClient.on('connect', () => {
-    console.log('✅ Conectado ao HiveMQ!');
-    mqttClient.subscribe('pluvia/telemetria/pivo-teste');
-});
-
-mqttClient.on('error', (err) => {
-    console.error('❌ Erro MQTT:', err.message);
-});
-
-mqttClient.on('reconnect', () => {
-    console.log('🔄 Tentando reconectar ao HiveMQ...');
-});
-
-mqttClient.on('close', () => {
-    console.log('🔌 Conexão MQTT fechada');
+const mqttClient = mqtt.connect(process.env.MQTT_BROKER_URL, {
+    username: process.env.MQTT_USERNAME,
+    password: process.env.MQTT_PASSWORD,
+    clientId: 'pluvia_api_' + Math.random().toString(16).slice(2, 8)
 });
 
 let clientesConectados = [];

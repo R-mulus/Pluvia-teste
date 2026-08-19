@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import './App.css'
-import { PivoController } from './Components/PivoController'
-import { MQTTCard, type PayloadMQTT } from './Components/MQTTCard'
-import { MqttLogger } from './Components/MqttLogger'
+import { PivoController } from './components/PivoController'
+import { MQTTCard, type PayloadMQTT } from './components/MQTTCard'
+import { MqttLogger } from './components/MqttLogger'
 
 function App() {
   const [isLoggerFullScreen, setIsLoggerFullScreen] = useState(false)
