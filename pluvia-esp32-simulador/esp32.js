@@ -1,59 +1,56 @@
-require('dotenv').config();
+require('dotenv').config(); // Adicione esta linha no topo
 const mqtt = require('mqtt');
 
+// Substitua a conexão antiga (HiveMQ) por esta:
 const mqttClient = mqtt.connect(process.env.MQTT_BROKER_URL, {
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,
     clientId: 'esp32_mock_' + Math.random().toString(16).slice(2, 8)
 });
 
-const FAZENDA_ID = '1';
-const PIVO_ID = 'pivo-teste';
-const TOPICO_COMANDO = `pluvia/v1/fazendas/${FAZENDA_ID}/pivos/${PIVO_ID}/comando`;
-const TOPICO_TELEMETRIA = `pluvia/v1/fazendas/${FAZENDA_ID}/pivos/${PIVO_ID}/telemetria`;
-const TOPICO_DEBUG = `pluvia/sistema/debug`; 
+const TOPICO_COMANDO = 'pluvia/comando/pivo-teste';
+const TOPICO_TELEMETRIA = 'pluvia/telemetria/pivo-teste';
 
+// Estados Globais
 let posicaoAtual = 0;
-let statusOperacional = 0; 
+let statusPivo = 'DESLIGADO'; // Pode ser: DESLIGADO, RODANDO, PAUSADO
 let motorInterval = null;
 
-let irrigandoAtual = 0;
+let irrigandoAtual = false;
 let laminaAtual = 0;
 let velocidadeAtualMs = 1000; 
+
+// Variáveis de Missão (Memória do CLP para conseguir retomar)
 let alvoAtual = 0;
-let sentidoAtual = 0;
+let sentidoAtual = 'horario';
 
 mqttClient.on('connect', () => {
-  console.log('🤖 Falso ESP32 conectado!');
+  console.log('🤖 Falso ESP32 conectado (Máquina de Estados)!');
   mqttClient.subscribe(TOPICO_COMANDO);
-  mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ origem: "ESP32_CLP", acao: "🟡 Hardware Simulado Inicializado" }));
 });
 
 function enviarTelemetria() {
   const payload = JSON.stringify({
-    meta: { timestamp: Math.floor(Date.now() / 1000), pivo_id: PIVO_ID },
-    tipo: 'telemetria',
-    dados: {
-      angulo_atual: posicaoAtual,
-      pressao: irrigandoAtual ? 4.5 : 0.0,
-      tensao_rede: 380,
-      tensao_motor: statusOperacional ? 380 : 0,
-      corrente: statusOperacional ? 12.3 : 0.0,
-      status_operacional: statusOperacional,
-      irrigacao_ativa: irrigandoAtual,
-      lamina_aplicada: laminaAtual,
-      velocidade_ms: velocidadeAtualMs
-    }
+    deviceId: 'pivo-teste',
+    status: statusPivo,
+    position: posicaoAtual,
+    irrigando: irrigandoAtual,
+    lamina: laminaAtual,
+    velocidadeMs: velocidadeAtualMs,
+    timestamp: new Date().toISOString()
   });
 
   mqttClient.publish(TOPICO_TELEMETRIA, payload);
+  console.log(`📡 Status: ${statusPivo} | Posição: ${posicaoAtual}° | Água: ${irrigandoAtual ? 'SIM' : 'NÃO'}`);
 }
 
+// O motor foi isolado em uma função para podermos chamar no "start" e no "resume"
 function iniciarMotor() {
   if (motorInterval) clearInterval(motorInterval);
   
   motorInterval = setInterval(() => {
-    if (sentidoAtual === 0) {
+    // 1. Move fisicamente 1 grau
+    if (sentidoAtual === 'horario') {
       posicaoAtual++;
       if (posicaoAtual >= 360) posicaoAtual = 0;
     } else {
@@ -61,63 +58,78 @@ function iniciarMotor() {
       if (posicaoAtual < 0) posicaoAtual = 359;
     }
     
+    // 2. Envia a nova posição
     enviarTelemetria();
 
+    // 3. Verifica se chegou no alvo
     if (posicaoAtual === alvoAtual) {
-      statusOperacional = 0;
-      irrigandoAtual = 0;
+      console.log('✅ Posição alvo alcançada! Desligando motor e bomba.');
+      statusPivo = 'DESLIGADO';
+      irrigandoAtual = false;
       enviarTelemetria();
       clearInterval(motorInterval);
-      mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ origem: "ESP32_CLP", acao: "✅ ALVO ALCANÇADO. Motores e bomba desligados." }));
     }
   }, velocidadeAtualMs); 
 }
 
 mqttClient.on('message', (topic, message) => {
-  const envelope = JSON.parse(message.toString());
+  const dados = JSON.parse(message.toString());
   
-  if (envelope.tipo === 'instantaneo' && envelope.dados !== undefined) {
-    const { start, direcao, irrigacao, lamina, angulo_inicial, angulo_final } = envelope.dados;
+  if (dados.command) {
+    const acao = dados.command.action;
 
-    if (start === 1) { 
-      // Comportamento Modbus Retentivo: Só sobrescreve se o valor vier no JSON.
-      if (angulo_final !== undefined) alvoAtual = angulo_final;
-      if (direcao !== undefined) sentidoAtual = direcao;
+    // ----- ESTADO: START -----
+    if (acao === 'start') {
+      alvoAtual = Number(dados.command.targetPosition);
+      sentidoAtual = dados.command.direction;
+      const inicio = dados.command.startPosition;
       
-      // Só teleporta o pivô se ele estiver parado E o usuário enviou um início
-      if (angulo_inicial !== undefined && statusOperacional === 0) {
-          posicaoAtual = angulo_inicial;
+      if (inicio !== undefined && inicio !== null && inicio !== '') {
+          posicaoAtual = Number(inicio);
       }
 
-      if (irrigacao !== undefined) {
-          irrigandoAtual = irrigacao;
-          laminaAtual = irrigandoAtual ? lamina : 0;
-          velocidadeAtualMs = irrigandoAtual ? Math.max(laminaAtual * 200, 200) : 400;
-      }
+      irrigandoAtual = !!dados.command.irrigar;
+      laminaAtual = irrigandoAtual ? Number(dados.command.lamina) : 0;
+      velocidadeAtualMs = irrigandoAtual ? Math.max(laminaAtual * 200, 200) : 400;
 
-      statusOperacional = 1;
-      mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ 
-        origem: "ESP32_CLP", 
-        acao: "⚡ M100=1 (START). Iniciando deslocamento.", 
-        direcao_atual: sentidoAtual === 0 ? 'Horário' : 'Anti-horário',
-        alvo: alvoAtual
-      }));
-      
+      statusPivo = 'RODANDO';
+      console.log(`\n⚡ INICIANDO MISSÃO: De ${posicaoAtual}° para ${alvoAtual}° (Sentido: ${sentidoAtual})`);
       enviarTelemetria();
 
       if (posicaoAtual === alvoAtual) {
-          statusOperacional = 0;
-          irrigandoAtual = 0;
+          statusPivo = 'DESLIGADO';
+          irrigandoAtual = false;
           enviarTelemetria();
           return;
       }
       iniciarMotor();
-    } 
-    else if (start === 0) { 
+    }
+    
+    // ----- ESTADO: STOP (Pausa) -----
+    else if (acao === 'stop') {
+      console.log('\n🛑 PARADA SOLICITADA. Cortando motores.');
       if (motorInterval) clearInterval(motorInterval);
-      statusOperacional = 0;
+      statusPivo = 'PAUSADO';
       enviarTelemetria();
-      mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ origem: "ESP32_CLP", acao: "🛑 M100=0 (STOP). Cortando contatores." }));
+    }
+
+    // ----- ESTADO: RESUME (Retomar) -----
+    else if (acao === 'resume') {
+      if (statusPivo === 'PAUSADO') {
+        console.log('\n▶️ RETOMANDO OPERAÇÃO. Religando motores.');
+        statusPivo = 'RODANDO';
+        enviarTelemetria();
+        iniciarMotor();
+      }
+    }
+
+    // ----- ESTADO: CANCEL (Abortar) -----
+    else if (acao === 'cancel') {
+      console.log('\n⏹️ MISSÃO ABORTADA PELO OPERADOR.');
+      if (motorInterval) clearInterval(motorInterval);
+      statusPivo = 'DESLIGADO';
+      irrigandoAtual = false;
+      enviarTelemetria();
     }
   }
 });
