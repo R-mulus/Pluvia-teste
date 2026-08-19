@@ -1,4 +1,4 @@
-require('dotenv').config(); // Adicione no topo do arquivo
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mqtt = require('mqtt');
@@ -19,10 +19,20 @@ const mqttClient = mqtt.connect(process.env.MQTT_BROKER_URL, {
     clientId: 'pluvia_api_' + Math.random().toString(16).slice(2, 8)
 });
 
+const FAZENDA_ID = '1';
+const TOPICO_TELEMETRIA_SUB = `pluvia/v1/fazendas/${FAZENDA_ID}/pivos/+/telemetria`;
+const TOPICO_DEBUG = `pluvia/sistema/debug`;
+
+mqttClient.on('connect', () => {
+    console.log('✅ API conectada ao Mosquitto!');
+    mqttClient.subscribe(TOPICO_TELEMETRIA_SUB);
+    mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ origem: "API_REST", acao: "🟢 Serviço Node.js Iniciado e Conectado" }));
+});
+
 let clientesConectados = [];
 
 mqttClient.on('message', (topic, message) => {
-  if (topic === 'pluvia/telemetria/pivo-teste') {
+  if (topic.includes('telemetria')) {
     const dadosTelemetria = message.toString();
     clientesConectados.forEach(cliente => cliente.write(`data: ${dadosTelemetria}\n\n`));
   }
@@ -31,28 +41,45 @@ mqttClient.on('message', (topic, message) => {
 app.post('/api/comando', (req, res) => {
   const { deviceId, command, targetPosition, startPosition, direction, irrigar, lamina } = req.body;
   
-  // Monta o payload dinamicamente ignorando o que for undefined
-  const comandoMqtt = { action: command };
-  if (targetPosition !== undefined) comandoMqtt.targetPosition = targetPosition;
-  if (startPosition !== undefined) comandoMqtt.startPosition = startPosition;
-  if (direction !== undefined) comandoMqtt.direction = direction;
-  if (irrigar !== undefined) comandoMqtt.irrigar = irrigar;
-  if (lamina !== undefined) comandoMqtt.lamina = lamina;
-
   const payloadObjeto = {
-    messageId: Math.random().toString(16).slice(2, 8),
-    deviceId: deviceId,
-    type: 'command',
-    timestamp: new Date().toISOString(),
-    command: comandoMqtt
+    meta: {
+      msg_id: Math.random().toString(16).slice(2, 8) + '-' + Date.now(),
+      timestamp_envio: Math.floor(Date.now() / 1000),
+      ttl_segundos: 60
+    },
+    tipo: 'instantaneo',
+    dados: {
+      // 1 liga os motores (start/resume), 0 corta (stop/cancel)
+      start: (command === 'start' || command === 'resume') ? 1 : 0
+    }
   };
 
+  // Se for START, envia todos os registradores Modbus. Se for RESUME, envia apenas o Start acima.
+  if (command === 'start') {
+    payloadObjeto.dados.direcao = direction === 'antihorario' ? 1 : 0;
+    payloadObjeto.dados.irrigacao = irrigar ? 1 : 0;
+    payloadObjeto.dados.lamina = Number(lamina) || 0;
+    
+    if (startPosition !== undefined && startPosition !== "") {
+       payloadObjeto.dados.angulo_inicial = Number(startPosition);
+    }
+    payloadObjeto.dados.angulo_final = Number(targetPosition) || 0;
+  }
+
   const payloadMqtt = JSON.stringify(payloadObjeto);
-  mqttClient.publish(`pluvia/comando/${deviceId}`, payloadMqtt);
+  const topicoPublicacao = `pluvia/v1/fazendas/${FAZENDA_ID}/pivos/${deviceId}/comando`;
+  
+  mqttClient.publish(topicoPublicacao, payloadMqtt);
+  
+  mqttClient.publish(TOPICO_DEBUG, JSON.stringify({ 
+    origem: "API_REST", 
+    aviso: `POST recebido: Ação [${command.toUpperCase()}]`,
+    payload_despachado: payloadObjeto.dados
+  }));
   
   res.status(200).json({ 
     sucesso: true, 
-    mensagem: `Comando ${command.toUpperCase()} enviado ao pivô`,
+    mensagem: `Comando ${command.toUpperCase()} enviado`,
     payload: payloadObjeto 
   });
 });
@@ -62,17 +89,17 @@ app.get('/api/telemetria', (req, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': 'http://localhost:5173'
+    'Access-Control-Allow-Origin': 'http://localhost:5173' 
   });
   
-  res.write('data: {"status": "CONECTADO", "position": 0}\n\n');
+  res.write('data: {"tipo":"sistema","dados":{"mensagem":"Túnel SSE conectado com sucesso"}}\n\n');
   clientesConectados.push(res);
+  
   req.on('close', () => {
     clientesConectados = clientesConectados.filter(c => c !== res);
   });
 });
 
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 API do Pluvia rodando na porta ${PORT}`);
+app.listen(3000, () => {
+  console.log(`🚀 API do Pluvia rodando na porta 3000`);
 });
