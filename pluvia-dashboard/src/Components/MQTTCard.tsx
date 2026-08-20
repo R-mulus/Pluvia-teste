@@ -1,19 +1,36 @@
+// export interface PayloadMQTT {
+//   messageId: string;
+//   deviceId: string;
+//   type: string;
+//   timestamp: string;
+//   command: {
+//     action: string;
+//     startPosition: number;
+//     targetPosition: number;
+//     direction: string;
+//     irrigar: boolean;
+//     lamina: number;
+//   };
+// }
+
+// O tipo atual foge da estrutura.
+
 export interface PayloadMQTT {
-  messageId: string;
-  deviceId: string;
-  type: string;
-  timestamp: string;
-  command: {
-    action: string;
-    startPosition: number;
-    targetPosition: number;
-    direction: string;
-    irrigar: boolean;
-    lamina: number;
+  meta: {
+    msg_id: string;
+    timestamp_envio: number;
+    ttl_segundos: number;
+  };
+  tipo: string;
+  dados: {
+    start: number;
+    direcao?: number;
+    irrigacao?: number;
+    lamina?: number;
+    angulo_inicial?: number;
+    angulo_final?: number;
   };
 }
-
-// ... O restante do MQTTCard continua rigorosamente igual ...
 
 interface MQTTCardProps {
   lastPayload: PayloadMQTT | null;

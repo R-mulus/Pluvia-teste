@@ -1,6 +1,6 @@
 packages:  
   - 'pluvia-api'
   - 'pluvia-dashboard'
-  - 'pluvia-esp32-simulador'
+  # - 'pluvia-esp32-simulador'
 allowBuilds:
   esbuild: true

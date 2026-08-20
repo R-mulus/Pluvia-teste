@@ -23,6 +23,14 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
   const [telemetriaLamina, setTelemetriaLamina] = useState(0);
   const [telemetriaVelocidade, setTelemetriaVelocidade] = useState(0);
 
+  // Campos oficiais da Doc de Normalização §2.3 — hoje o firmware do ESP32
+  // só publica "angulo_atual"; os demais ficam aguardando o firmware ser
+  // atualizado para lê-los do CLP e publicá-los na telemetria.
+  const [telemetriaPressao, setTelemetriaPressao] = useState<number | null>(null);
+  const [telemetriaTensaoRede, setTelemetriaTensaoRede] = useState<number | null>(null);
+  const [telemetriaTensaoMotor, setTelemetriaTensaoMotor] = useState<number | null>(null);
+  const [telemetriaCorrente, setTelemetriaCorrente] = useState<number | null>(null);
+
   const [posicaoInicial, setPosicaoInicial] = useState("");
   const [posicaoAlvo, setPosicaoAlvo] = useState("");
   const [modoSentido, setModoSentido] = useState("auto");
@@ -33,17 +41,20 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
 
   useEffect(() => {
     const tunelSSE = new EventSource("http://localhost:3000/api/telemetria");
-    
+
     tunelSSE.onmessage = (event) => {
       const envelope = JSON.parse(event.data);
-      
+
       if (envelope.tipo === 'telemetria' && envelope.dados) {
         const d = envelope.dados;
-        
-        if (d.angulo_atual !== undefined) {
-          setPosicaoAtual(d.angulo_atual);
-        }
-        
+
+        // Campos oficiais (Doc §2.3)
+        if (d.angulo_atual !== undefined) setPosicaoAtual(d.angulo_atual);
+        if (d.pressao !== undefined) setTelemetriaPressao(d.pressao);
+        if (d.tensao_rede !== undefined) setTelemetriaTensaoRede(d.tensao_rede);
+        if (d.tensao_motor !== undefined) setTelemetriaTensaoMotor(d.tensao_motor);
+        if (d.corrente !== undefined) setTelemetriaCorrente(d.corrente);
+
         setStatusTexto(prev => {
           if (d.status_operacional === 1) return "RODANDO";
           if (d.status_operacional === 2) return "AJUSTANDO POSIÇÃO";
@@ -53,7 +64,11 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
           }
           return prev;
         });
-        
+
+        // ⚠️ Extensão não-oficial (não presente na Doc de Normalização).
+        // Só existiam no simulador removido do projeto — mantidos aqui
+        // porque o front-end depende deles, mas o ESP32 real ainda não
+        // os publica.
         if (d.irrigacao_ativa !== undefined) setTelemetriaAgua(d.irrigacao_ativa === 1);
         if (d.lamina_aplicada !== undefined) setTelemetriaLamina(d.lamina_aplicada);
         if (d.velocidade_ms !== undefined) setTelemetriaVelocidade(d.velocidade_ms);
@@ -70,36 +85,41 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
   const sentidoFinal = modoSentido === "auto" ? sentidoCalculado : modoSentido;
 
   const despacharComando = async (acao: "start" | "stop" | "resume" | "cancel") => {
-    
-    if (acao === "start") {
-      if (!posicaoAlvo) {
-        alert("Por favor, informe a posição alvo.");
-        return;
-      }
-      
-      // VALIDAÇÃO REQUISITADA: Impede envio se o ponto de partida e chegada forem idênticos
-      if (valorAlvoCalc === valorInicialCalc) {
-        alert("Ação Bloqueada: O ângulo alvo não pode ser igual ao ângulo de partida (atual ou inicial).");
-        return;
-      }
+
+    // O firmware do ESP32 ainda não implementa pausa/retomada: o CLP não
+    // tem coil de "pausa" no mapeamento Modbus, e processInstantaneo()
+    // exige as 6 chaves do bloco "dados" sempre presentes. Sem uma função
+    // real do outro lado, bloqueamos aqui em vez de mandar um payload
+    // incompleto que seria rejeitado (ou pior, mal interpretado) pelo CLP.
+    if (acao === "stop" || acao === "resume" || acao === "cancel") {
+      alert(
+        "Função ainda não implementada no firmware do ESP32.\n" +
+        "O CLP não possui rotina de pausa/retomada — apenas o comando " +
+        "de partida completo (\"start\") está disponível no momento."
+      );
+      return;
     }
 
-    if (acao === "cancel" || acao === "stop") {
-      setStatusTexto(acao === "stop" ? "PAUSADO" : "DESLIGADO");
+    if (!posicaoAlvo) {
+      alert("Por favor, informe a posição alvo.");
+      return;
+    }
+
+    // VALIDAÇÃO REQUISITADA: Impede envio se o ponto de partida e chegada forem idênticos
+    if (valorAlvoCalc === valorInicialCalc) {
+      alert("Ação Bloqueada: O ângulo alvo não pode ser igual ao ângulo de partida (atual ou inicial).");
+      return;
     }
 
     const payloadBody: PayloadComando = {
       deviceId: "pivo-01",
       command: acao,
+      startPosition: valorInicialCalc,
+      targetPosition: valorAlvoCalc,
+      direction: sentidoFinal,
+      irrigar: vaiIrrigar,
+      lamina: vaiIrrigar ? Number(inputLamina) : 0,
     };
-
-    if (acao === "start") {
-      payloadBody.startPosition = valorInicialCalc;
-      payloadBody.targetPosition = valorAlvoCalc;
-      payloadBody.direction = sentidoFinal;
-      payloadBody.irrigar = vaiIrrigar;
-      payloadBody.lamina = vaiIrrigar ? Number(inputLamina) : 0;
-    }
 
     try {
       const response = await fetch("http://localhost:3000/api/comando", {
@@ -127,9 +147,9 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
             className="status-badge"
             style={{color: 'white',
               backgroundColor:
-                statusTexto === "RODANDO" ? "#059669" : 
-                statusTexto === "AJUSTANDO POSIÇÃO" ? "#8b5cf6" : 
-                statusTexto === "PAUSADO" ? "#d97706" : 
+                statusTexto === "RODANDO" ? "#059669" :
+                statusTexto === "AJUSTANDO POSIÇÃO" ? "#8b5cf6" :
+                statusTexto === "PAUSADO" ? "#d97706" :
                 "#4b5563",
             }}
           >
@@ -143,10 +163,10 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
         </div>
 
         {/* NOVO DESIGN DO PAINEL DE INFORMAÇÕES */}
-        <div style={{ 
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', 
-          marginTop: '1.5rem', padding: '1rem', 
-          backgroundColor: '#111827', borderRadius: '8px', border: '1px solid #374151' 
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem',
+          marginTop: '1.5rem', padding: '1rem',
+          backgroundColor: '#111827', borderRadius: '8px', border: '1px solid #374151'
         }}>
           <div>
             <span style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sistema Hídrico</span>
@@ -165,13 +185,13 @@ export function PivoController({ onCommandSent }: PivoControllerProps) {
           <div>
             <span style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pressão na Linha</span>
             <div style={{ fontWeight: 'bold', color: '#e5e7eb', marginTop: '0.25rem', fontSize: '0.9rem' }}>
-              {telemetriaAgua ? "4.5 Bar" : "0.0 Bar"}
+              {telemetriaPressao !== null ? `${telemetriaPressao.toFixed(1)} Bar` : "— (aguardando firmware)"}
             </div>
           </div>
           <div>
             <span style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tensão da Rede</span>
             <div style={{ fontWeight: 'bold', color: '#e5e7eb', marginTop: '0.25rem', fontSize: '0.9rem' }}>
-              380 V
+              {telemetriaTensaoRede !== null ? `${telemetriaTensaoRede} V` : "— (aguardando firmware)"}
             </div>
           </div>
         </div>
